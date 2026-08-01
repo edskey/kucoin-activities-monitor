@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       send_test_messages:
-        description: 'Отправить два сообщения с пометкой [ТЕСТ]'
+        description: 'Отправить 10 разных сообщений с пометкой [ТЕСТ]'
         required: true
         default: false
         type: boolean
@@ -43,7 +43,7 @@ jobs:
             -H "Content-Type: application/json" \
             --data-binary @/tmp/events.json \
             "$CHECK_URL"
-      - name: Send two explicitly requested test messages
+      - name: Send 10 explicitly requested test messages
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.send_test_messages }}
         env:
           CHECK_URL: ${{ secrets.KUCOIN_VERCEL_CHECK_URL }}
