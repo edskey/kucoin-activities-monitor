@@ -37,7 +37,7 @@ jobs:
         run: |
           test -n "$CHECK_URL"
           test -n "$CHECK_SECRET"
-          curl --fail-with-body --silent --show-error --max-time 30 \
+          curl --fail-with-body --silent --show-error --max-time 70 \
             -X POST \
             -H "Authorization: Bearer $CHECK_SECRET" \
             -H "Content-Type: application/json" \
@@ -53,14 +53,14 @@ jobs:
           test -n "$CHECK_URL"
           test -n "$CHECK_SECRET"
           node scripts/manual-test-payload.js baseline > /tmp/test-baseline.json
-          curl --fail-with-body --silent --show-error --max-time 30 \
+          curl --fail-with-body --silent --show-error --max-time 70 \
             -X POST \
             -H "Authorization: Bearer $CHECK_SECRET" \
             -H "Content-Type: application/json" \
             --data-binary @/tmp/test-baseline.json \
             "$CHECK_URL"
           node scripts/manual-test-payload.js messages > /tmp/test-messages.json
-          curl --fail-with-body --silent --show-error --max-time 30 \
+          curl --fail-with-body --silent --show-error --max-time 70 \
             -X POST \
             -H "Authorization: Bearer $CHECK_SECRET" \
             -H "Content-Type: application/json" \
