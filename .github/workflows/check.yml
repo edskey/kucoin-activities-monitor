@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: '*/5 * * * *'
   workflow_dispatch:
+    inputs:
+      send_test_messages:
+        description: 'Отправить два сообщения с пометкой [ТЕСТ]'
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -19,10 +25,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Collect events
+        if: ${{ github.event_name == 'schedule' || !inputs.send_test_messages }}
         env:
           KUCOIN_COINGECKO_DEMO_API_KEY: ${{ secrets.KUCOIN_COINGECKO_DEMO_API_KEY }}
         run: node scripts/collect.js > /tmp/events.json
       - name: Trigger protected Vercel endpoint
+        if: ${{ github.event_name == 'schedule' || !inputs.send_test_messages }}
         env:
           CHECK_URL: ${{ secrets.KUCOIN_VERCEL_CHECK_URL }}
           CHECK_SECRET: ${{ secrets.KUCOIN_CHECK_SECRET }}
@@ -34,4 +42,27 @@ jobs:
             -H "Authorization: Bearer $CHECK_SECRET" \
             -H "Content-Type: application/json" \
             --data-binary @/tmp/events.json \
+            "$CHECK_URL"
+      - name: Send two explicitly requested test messages
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.send_test_messages }}
+        env:
+          CHECK_URL: ${{ secrets.KUCOIN_VERCEL_CHECK_URL }}
+          CHECK_SECRET: ${{ secrets.KUCOIN_CHECK_SECRET }}
+          TEST_RUN_ID: ${{ github.run_id }}
+        run: |
+          test -n "$CHECK_URL"
+          test -n "$CHECK_SECRET"
+          node scripts/manual-test-payload.js baseline > /tmp/test-baseline.json
+          curl --fail-with-body --silent --show-error --max-time 30 \
+            -X POST \
+            -H "Authorization: Bearer $CHECK_SECRET" \
+            -H "Content-Type: application/json" \
+            --data-binary @/tmp/test-baseline.json \
+            "$CHECK_URL"
+          node scripts/manual-test-payload.js messages > /tmp/test-messages.json
+          curl --fail-with-body --silent --show-error --max-time 30 \
+            -X POST \
+            -H "Authorization: Bearer $CHECK_SECRET" \
+            -H "Content-Type: application/json" \
+            --data-binary @/tmp/test-messages.json \
             "$CHECK_URL"
