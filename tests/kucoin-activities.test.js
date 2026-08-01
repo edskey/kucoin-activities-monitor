@@ -18,11 +18,15 @@ test('extracts the last campaign end and keeps countdown out of the stable ID', 
   assert.equal(period.startAt, Date.UTC(2026, 6, 30, 10, 0));
   assert.equal(period.endAt, Date.UTC(2026, 7, 14, 8, 0));
   assert.equal(formatTimer(period.endAt, Date.UTC(2026, 7, 13, 7, 30)), '1д 0ч 30м');
+  assert.equal(extractPeriod('Период события: с 08:00 10 июля 2026 года по 23:59 9 сентября 2026 года').endAt, Date.UTC(2026, 8, 9, 23, 59));
 });
 
 test('extracts stablecoin and token prize pools from Russian titles', () => {
   assert.deepEqual(extractPool('Кампания — 44 000 USDT в розыгрыше'), { amount: 44000, currency: 'USDT' });
   assert.deepEqual(extractPool('Розыгрыш призового пула в 310 000 AEON'), { amount: 310000, currency: 'AEON' });
+  assert.equal(adapter.shared.extractExplicitPool('Зарабатывайте до 56 USDT в качестве награды'), null);
+  assert.deepEqual(adapter.shared.extractExplicitPool('Общий призовой фонд составляет 200 000 USDT'), { amount: 200000, currency: 'USDT' });
+  assert.deepEqual(adapter.shared.extractExplicitPool('Получите долю призового пула в 650 000 USDT'), { amount: 650000, currency: 'USDT' });
 });
 
 test('builds a direct Russian URL and parses server-rendered detail JSON', () => {
@@ -43,7 +47,7 @@ test('collects only currently running cards and converts a token pool through Co
     { annId: 3, annTitle: 'Розыгрыш 20 000 USDT', annDesc: 'Призовой пул', cTime: Date.UTC(2026, 6, 20), annUrl: 'https://www.kucoin.com/announcement/ru-expired' },
   ];
   const details = {
-    'ru-active': '<p>Период кампании: с 10:00 30 июля 2026 года по 10:00 6 августа 2026 года (UTC)</p>',
+    'ru-active': '<p>Период кампании: с 10:00 30 июля 2026 года по 10:00 6 августа 2026 года (UTC)</p><a href="https://www.kucoin.com/campaigns/AEON_Test_2026">Участвовать</a>',
     'ru-future': '<p>Период кампании: с 10:00 2 августа 2026 года по 10:00 8 августа 2026 года (UTC)</p>',
     'ru-expired': '<p>Период кампании: с 10:00 20 июля 2026 года по 10:00 31 июля 2026 года (UTC)</p>',
   };
@@ -71,4 +75,5 @@ test('collects only currently running cards and converts a token pool through Co
     ['Объем пула', '310 000 AEON (≈ 620 000 USDT)'],
     ['Заканчивается через', '5д 0ч 0м'],
   ]);
+  assert(events[0].matchKeys.includes('kucoin:campaign:aeon_test_2026'));
 });

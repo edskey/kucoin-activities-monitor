@@ -14,6 +14,9 @@ function validateEvent(event, sourceName) {
     fields: Array.isArray(event.fields)
       ? event.fields.slice(0, 30).map(([label, value]) => [String(label).slice(0, 100), String(value).slice(0, 500)])
       : [],
+    matchKeys: Array.isArray(event.matchKeys)
+      ? [...new Set(event.matchKeys.map(String).filter(Boolean))].slice(0, 20).map((key) => key.slice(0, 500))
+      : [],
   };
 }
 

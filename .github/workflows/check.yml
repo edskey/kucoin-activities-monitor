@@ -10,6 +10,11 @@ on:
         required: true
         default: false
         type: boolean
+      send_events_hub_test_message:
+        description: 'Отправить одно тестовое сообщение Events Hub'
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -25,12 +30,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Collect events
-        if: ${{ github.event_name == 'schedule' || !inputs.send_test_messages }}
+        if: ${{ github.event_name == 'schedule' || (!inputs.send_test_messages && !inputs.send_events_hub_test_message) }}
         env:
           KUCOIN_COINGECKO_DEMO_API_KEY: ${{ secrets.KUCOIN_COINGECKO_DEMO_API_KEY }}
         run: node scripts/collect.js > /tmp/events.json
       - name: Trigger protected Vercel endpoint
-        if: ${{ github.event_name == 'schedule' || !inputs.send_test_messages }}
+        if: ${{ github.event_name == 'schedule' || (!inputs.send_test_messages && !inputs.send_events_hub_test_message) }}
         env:
           CHECK_URL: ${{ secrets.KUCOIN_VERCEL_CHECK_URL }}
           CHECK_SECRET: ${{ secrets.KUCOIN_CHECK_SECRET }}
@@ -65,4 +70,27 @@ jobs:
             -H "Authorization: Bearer $CHECK_SECRET" \
             -H "Content-Type: application/json" \
             --data-binary @/tmp/test-messages.json \
+            "$CHECK_URL"
+      - name: Send one explicitly requested Events Hub test message
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.send_events_hub_test_message }}
+        env:
+          CHECK_URL: ${{ secrets.KUCOIN_VERCEL_CHECK_URL }}
+          CHECK_SECRET: ${{ secrets.KUCOIN_CHECK_SECRET }}
+          TEST_RUN_ID: ${{ github.run_id }}
+        run: |
+          test -n "$CHECK_URL"
+          test -n "$CHECK_SECRET"
+          node scripts/manual-test-payload.js events-hub-baseline > /tmp/events-hub-test-baseline.json
+          curl --fail-with-body --silent --show-error --max-time 70 \
+            -X POST \
+            -H "Authorization: Bearer $CHECK_SECRET" \
+            -H "Content-Type: application/json" \
+            --data-binary @/tmp/events-hub-test-baseline.json \
+            "$CHECK_URL"
+          node scripts/manual-test-payload.js events-hub-message > /tmp/events-hub-test-message.json
+          curl --fail-with-body --silent --show-error --max-time 70 \
+            -X POST \
+            -H "Authorization: Bearer $CHECK_SECRET" \
+            -H "Content-Type: application/json" \
+            --data-binary @/tmp/events-hub-test-message.json \
             "$CHECK_URL"

@@ -1,4 +1,5 @@
 const source = 'kucoin-manual-test';
+const eventsHubSource = 'kucoin-events-hub-manual-test';
 const mode = process.argv[2];
 
 if (mode === 'baseline') {
@@ -7,11 +8,36 @@ if (mode === 'baseline') {
 }
 
 if (mode !== 'messages') {
-  process.stderr.write('Usage: node scripts/manual-test-payload.js baseline|messages\n');
-  process.exit(1);
+  if (mode === 'events-hub-baseline') {
+    process.stdout.write(JSON.stringify({ sources: [eventsHubSource], events: [] }));
+    process.exit(0);
+  }
+  if (mode !== 'events-hub-message') {
+    process.stderr.write('Usage: node scripts/manual-test-payload.js baseline|messages|events-hub-baseline|events-hub-message\n');
+    process.exit(1);
+  }
 }
 
 const runId = String(process.env.TEST_RUN_ID || Date.now()).replace(/[^a-z0-9_-]/gi, '').slice(0, 100);
+
+if (mode === 'events-hub-message') {
+  process.stdout.write(JSON.stringify({
+    sources: [eventsHubSource],
+    events: [{
+      source: eventsHubSource,
+      id: `manual-events-hub-${runId}`,
+      title: '[ТЕСТ EVENTS HUB 1/1] Проверка новой карточки KuCoin',
+      url: 'https://www.kucoin.com/ru/events-hub',
+      fields: [
+        ['Объем пула', '25 000 USDT (тестовые данные)'],
+        ['Заканчивается через', '2д 4ч 30м (тестовые данные)'],
+      ],
+      matchKeys: [`kucoin:manual-events-hub:${runId}`],
+    }],
+  }));
+  process.exit(0);
+}
+
 const promotions = [
   ['Торговый турнир BTC: награды активным трейдерам', '25 000 USDT', '2д 4ч 30м'],
   ['Кампания для новых пользователей KuCoin', '12 500 USDC', '5д 1ч 15м'],

@@ -1,3 +1,5 @@
+const { buildKucoinMatchKeys } = require('./kucoin-identity');
+
 const ANNOUNCEMENTS_URL = 'https://api.kucoin.com/api/v3/announcements';
 const SITE_ORIGIN = 'https://www.kucoin.com';
 const SOURCE_NAME = 'kucoin-activities-ongoing';
@@ -89,7 +91,7 @@ function englishDateTokens(text) {
 
 function extractPeriod(text) {
   const lines = String(text).split('\n').filter((line) =>
-    /период (?:кампании|акции|активности)|campaign period|activity period|promotion period/i.test(line)
+    /период (?:кампании|акции|активности|события)|campaign period|activity period|promotion period|event period/i.test(line)
   );
   const values = lines.flatMap((line) => [...russianDateTokens(line), ...englishDateTokens(line)]);
   if (!values.length) return { startAt: null, endAt: null };
@@ -103,7 +105,7 @@ function parseAmount(raw) {
   return Number(compact.replace(',', '.'));
 }
 
-function extractPool(...parts) {
+function findPool(minimumScore, ...parts) {
   const text = parts.filter(Boolean).join(' — ');
   const matches = [];
   const pattern = /((?:\d{1,3}(?:[\s\u00a0.,]\d{3})+|\d+(?:[.,]\d+)?))\s*([A-Z][A-Z0-9]{0,9})\b/g;
@@ -112,10 +114,23 @@ function extractPool(...parts) {
     const currency = match[2].toUpperCase();
     const context = text.slice(Math.max(0, match.index - 70), match.index + match[0].length + 70);
     if (!Number.isFinite(amount) || amount <= 0) continue;
-    if (!/(?:пул|розыгрыш|разыгр|раздач|награ|бонус|giveaway|prize|reward|share|bonus)/i.test(context)) continue;
-    matches.push({ amount, currency });
+    let score = 0;
+    if (/(?:общ(?:ий|его)\s+(?:призовой\s+)?(?:пул(?:а)?|фонд(?:а)?)|призов(?:ой|ого)\s+(?:пул(?:а)?|фонд(?:а)?)|пул(?:а)?\s+(?:в размере|составляет)|(?:total )?prize pool|reward pool)/i.test(context)) score += 100;
+    if (/(?:пул|розыгрыш|разыгр|раздач|награ|бонус|giveaway|prize|reward|share|bonus)/i.test(context)) score += 40;
+    if (/(?:объ[её]м (?:торгов|сдел)|trade volume|threshold|порог)/i.test(context)) score -= 80;
+    if (score < minimumScore) continue;
+    matches.push({ amount, currency, score });
   }
-  return matches.sort((a, b) => b.amount - a.amount)[0] || null;
+  const selected = matches.sort((a, b) => b.score - a.score || b.amount - a.amount)[0];
+  return selected ? { amount: selected.amount, currency: selected.currency } : null;
+}
+
+function extractPool(...parts) {
+  return findPool(1, ...parts);
+}
+
+function extractExplicitPool(...parts) {
+  return findPool(100, ...parts);
 }
 
 function formatNumber(value, maximumFractionDigits = 8) {
@@ -209,6 +224,18 @@ async function coinGeckoUsdtValue(pool) {
   return Number.isFinite(usd) && usd > 0 ? pool.amount * usd : null;
 }
 
+async function formatPoolText(pool) {
+  if (!pool) return 'не указан';
+  const usdtValue = await coinGeckoUsdtValue(pool);
+  let text = `${formatNumber(pool.amount)} ${pool.currency}`;
+  if (!STABLES.has(pool.currency)) {
+    text += usdtValue === null
+      ? ' (оценка в USDT недоступна)'
+      : ` (≈ ${formatNumber(usdtValue, 2)} USDT)`;
+  }
+  return text;
+}
+
 async function normalizeAnnouncement(item, now) {
   const url = localizedUrl(item);
   const detail = await fetchDetail(url);
@@ -223,16 +250,7 @@ async function normalizeAnnouncement(item, now) {
 
   const title = String(item.annTitle || detail.title || '').trim();
   const pool = extractPool(title, item.annDesc, detail.summary, text.slice(0, 2500));
-  const usdtValue = await coinGeckoUsdtValue(pool);
-  let poolText = 'не указан';
-  if (pool) {
-    poolText = `${formatNumber(pool.amount)} ${pool.currency}`;
-    if (!STABLES.has(pool.currency)) {
-      poolText += usdtValue === null
-        ? ' (оценка в USDT недоступна)'
-        : ` (≈ ${formatNumber(usdtValue, 2)} USDT)`;
-    }
-  }
+  const poolText = await formatPoolText(pool);
   return {
     source: SOURCE_NAME,
     id: String(item.annId),
@@ -242,6 +260,12 @@ async function normalizeAnnouncement(item, now) {
       ['Объем пула', poolText],
       ['Заканчивается через', formatTimer(period.endAt, now)],
     ],
+    matchKeys: buildKucoinMatchKeys({
+      url,
+      title,
+      endAt: period.endAt,
+      content: detail.content,
+    }),
   };
 }
 
@@ -263,5 +287,13 @@ module.exports = {
     localizedUrl,
     normalizeAnnouncement,
     parseNextData,
+  },
+  shared: {
+    extractExplicitPool,
+    extractPool,
+    fetchWithRetry,
+    formatPoolText,
+    formatTimer,
+    htmlToText,
   },
 };

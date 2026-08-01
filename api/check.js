@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const STATE_KEY = 'kucoin-activities-monitor:state:v1';
 const LOCK_KEY = 'kucoin-activities-monitor:lock:v1';
 const MAX_SENT_IDS = 1000;
+const MAX_MATCH_KEYS = 5000;
 
 function env(name) {
   const value = process.env[name];
@@ -50,6 +51,10 @@ async function saveState(state) {
 
 function uniqueIds(ids) {
   return [...new Set(ids)].slice(0, MAX_SENT_IDS);
+}
+
+function uniqueMatchKeys(keys) {
+  return [...new Set(keys.map(String).filter(Boolean))].slice(0, MAX_MATCH_KEYS);
 }
 
 function escapeHtml(value) {
@@ -107,6 +112,9 @@ function payload(req) {
     fields: Array.isArray(event.fields)
       ? event.fields.slice(0, 30).map(([a, b]) => [String(a).slice(0, 100), String(b).slice(0, 500)])
       : [],
+    matchKeys: Array.isArray(event.matchKeys)
+      ? uniqueMatchKeys(event.matchKeys.slice(0, 20).map((key) => String(key).slice(0, 500)))
+      : [],
   })).filter((event) => sources.includes(event.source) && event.id && event.title && isSafeUrl(event.url));
   return events.length === body.events.slice(0, 500).length ? { sources, events } : null;
 }
@@ -123,7 +131,19 @@ async function handler(req, res) {
     if (!locked) return respond(res, 202, { ok: true, skipped: 'already_running' });
     const state = await loadState();
     state.sources ||= {};
+    state.matchKeys = uniqueMatchKeys(Array.isArray(state.matchKeys) ? state.matchKeys : []);
+    const globalSeen = new Set(state.matchKeys);
+    const pendingOwners = new Map();
     const deliveries = [];
+
+    const rememberMatchKeys = (keys) => {
+      const fresh = [];
+      for (const key of keys || []) {
+        if (!globalSeen.has(key)) fresh.push(key);
+        globalSeen.add(key);
+      }
+      if (fresh.length) state.matchKeys = uniqueMatchKeys([...fresh, ...state.matchKeys]);
+    };
 
     for (const source of input.sources) {
       const events = input.events.filter((event) => event.source === source);
@@ -131,17 +151,42 @@ async function handler(req, res) {
       const existing = state.sources[source];
       if (!existing?.sentIds) {
         state.sources[source] = { sentIds: uniqueIds(ids) };
+        events.forEach((event) => rememberMatchKeys(event.matchKeys));
         continue;
       }
       const seen = new Set(existing.sentIds);
-      deliveries.push(...events.filter((event) => !seen.has(event.id)).reverse());
+      for (const event of [...events].reverse()) {
+        if (seen.has(event.id)) {
+          rememberMatchKeys(event.matchKeys);
+          continue;
+        }
+        const globalDuplicate = event.matchKeys.some((key) => globalSeen.has(key));
+        if (globalDuplicate) {
+          existing.sentIds = uniqueIds([event.id, ...existing.sentIds]);
+          seen.add(event.id);
+          continue;
+        }
+        const pendingOwner = event.matchKeys.map((key) => pendingOwners.get(key)).find(Boolean);
+        if (pendingOwner) {
+          pendingOwner.aliases.push({ source, id: event.id, matchKeys: event.matchKeys });
+          continue;
+        }
+        const delivery = { event, aliases: [] };
+        deliveries.push(delivery);
+        event.matchKeys.forEach((key) => pendingOwners.set(key, delivery));
+      }
     }
 
     state.checkedAt = new Date().toISOString();
     await saveState(state);
-    for (const event of deliveries) {
+    for (const delivery of deliveries) {
+      const { event, aliases } = delivery;
       await sendTelegram(formatEvent(event));
       state.sources[event.source].sentIds = uniqueIds([event.id, ...state.sources[event.source].sentIds]);
+      for (const alias of aliases) {
+        state.sources[alias.source].sentIds = uniqueIds([alias.id, ...state.sources[alias.source].sentIds]);
+      }
+      rememberMatchKeys([event.matchKeys, ...aliases.map((alias) => alias.matchKeys)].flat());
       state.checkedAt = new Date().toISOString();
       await saveState(state);
     }

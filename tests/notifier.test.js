@@ -62,12 +62,12 @@ function redisTelegramMock(context, options = {}) {
   return { getState: () => state, telegram, redisKeys };
 }
 
-async function invoke(events) {
+async function invoke(events, sources = ['kucoin-activities-ongoing']) {
   const capture = responseCapture();
   await handler({
     method: 'POST',
     headers: { authorization: 'Bearer secret' },
-    body: { sources: ['kucoin-activities-ongoing'], events },
+    body: { sources, events },
   }, capture.res);
   return capture.result();
 }
@@ -129,4 +129,87 @@ test('rejects non-HTTPS links in scheduler payloads', async (context) => {
   unsafe.url = 'javascript:alert(1)';
   const result = await invoke([unsafe]);
   assert.deepEqual(result, { status: 400, body: { error: 'invalid_payload' } });
+});
+
+test('sends cross-source duplicates once and checkpoints both source IDs', async (context) => {
+  configureEnv();
+  const initialState = {
+    sources: {
+      'kucoin-activities-ongoing': { sentIds: ['old-announcement'] },
+      'kucoin-events-hub-ongoing': { sentIds: ['old-hub-card'] },
+    },
+  };
+  const mocked = redisTelegramMock(context, { initialState });
+  const announcement = event('new-announcement');
+  announcement.matchKeys = ['kucoin:campaign:same-campaign'];
+  const hub = {
+    ...event('new-hub-card'),
+    source: 'kucoin-events-hub-ongoing',
+    url: 'https://www.kucoin.com/ru/campaigns/same-campaign',
+    matchKeys: ['kucoin:campaign:same-campaign'],
+  };
+  const sources = ['kucoin-activities-ongoing', 'kucoin-events-hub-ongoing'];
+  const result = await invoke([announcement, hub], sources);
+  assert.equal(result.body.sent, 1);
+  assert.equal(mocked.telegram.length, 1);
+  assert(mocked.getState().sources['kucoin-activities-ongoing'].sentIds.includes('new-announcement'));
+  assert(mocked.getState().sources['kucoin-events-hub-ongoing'].sentIds.includes('new-hub-card'));
+  assert(mocked.getState().matchKeys.includes('kucoin:campaign:same-campaign'));
+  assert.equal((await invoke([announcement, hub], sources)).body.sent, 0);
+});
+
+test('backfills match keys from seen announcements before accepting a Hub duplicate', async (context) => {
+  configureEnv();
+  const initialState = {
+    sources: {
+      'kucoin-activities-ongoing': { sentIds: ['seen-announcement'] },
+      'kucoin-events-hub-ongoing': { sentIds: [] },
+    },
+  };
+  const mocked = redisTelegramMock(context, { initialState });
+  const announcement = event('seen-announcement');
+  announcement.matchKeys = ['kucoin:campaign:already-seen'];
+  const hub = {
+    ...event('hub-duplicate'),
+    source: 'kucoin-events-hub-ongoing',
+    url: 'https://www.kucoin.com/ru/campaigns/already-seen',
+    matchKeys: ['kucoin:campaign:already-seen'],
+  };
+  const result = await invoke(
+    [announcement, hub],
+    ['kucoin-activities-ongoing', 'kucoin-events-hub-ongoing'],
+  );
+  assert.equal(result.body.sent, 0);
+  assert.equal(mocked.telegram.length, 0);
+  assert(mocked.getState().sources['kucoin-events-hub-ongoing'].sentIds.includes('hub-duplicate'));
+});
+
+test('does not checkpoint a cross-source duplicate pair before Telegram accepts it', async (context) => {
+  configureEnv();
+  const initialState = {
+    sources: {
+      'kucoin-activities-ongoing': { sentIds: ['old-announcement'] },
+      'kucoin-events-hub-ongoing': { sentIds: ['old-hub-card'] },
+    },
+  };
+  const announcement = event('retry-announcement');
+  announcement.matchKeys = ['kucoin:campaign:retry-campaign'];
+  const hub = {
+    ...event('retry-hub-card'),
+    source: 'kucoin-events-hub-ongoing',
+    url: 'https://www.kucoin.com/ru/campaigns/retry-campaign',
+    matchKeys: ['kucoin:campaign:retry-campaign'],
+  };
+  const sources = ['kucoin-activities-ongoing', 'kucoin-events-hub-ongoing'];
+  const first = redisTelegramMock(context, { initialState, failTelegramAttempt: 1 });
+  assert.equal((await invoke([announcement, hub], sources)).status, 500);
+  assert(!first.getState().sources['kucoin-activities-ongoing'].sentIds.includes('retry-announcement'));
+  assert(!first.getState().sources['kucoin-events-hub-ongoing'].sentIds.includes('retry-hub-card'));
+
+  context.mock.restoreAll();
+  const second = redisTelegramMock(context, { initialState: first.getState() });
+  assert.equal((await invoke([announcement, hub], sources)).body.sent, 1);
+  assert.equal(second.telegram.length, 1);
+  assert(second.getState().sources['kucoin-activities-ongoing'].sentIds.includes('retry-announcement'));
+  assert(second.getState().sources['kucoin-events-hub-ongoing'].sentIds.includes('retry-hub-card'));
 });
