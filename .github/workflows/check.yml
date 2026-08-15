@@ -2,7 +2,7 @@ name: Check KuCoin activities
 
 on:
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '*/15 * * * *'
   workflow_dispatch:
     inputs:
       send_test_messages:

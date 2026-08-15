@@ -1,6 +1,6 @@
 # KuCoin Activities Telegram Monitor
 
-Независимый Telegram-бот для мониторинга русскоязычных разделов [«Последние мероприятия» KuCoin](https://www.kucoin.com/ru/announcement/activities) и [Events Hub](https://www.kucoin.com/ru/events-hub). GitHub Actions запускает проверку каждые пять минут, а защищённая Vercel Function хранит состояние в Upstash Redis и отправляет новые карточки в Telegram.
+Независимый Telegram-бот для мониторинга русскоязычных разделов [«Последние мероприятия» KuCoin](https://www.kucoin.com/ru/announcement/activities) и [Events Hub](https://www.kucoin.com/ru/events-hub). GitHub Actions запускает проверку каждые пятнадцать минут, а защищённая Vercel Function хранит состояние в Upstash Redis и отправляет новые карточки в Telegram.
 
 ## Что считается новым событием
 
@@ -93,7 +93,7 @@ npm run collect
 2. Подключите существующую Upstash Redis-базу через её REST URL и token.
 3. После первого Vercel deployment добавьте GitHub Actions secrets.
 4. Один раз вручную запустите workflow `Check KuCoin activities` и убедитесь, что ответ содержит `sent: 0` — это создаст базу без сообщений.
-5. После этого расписание `*/5 * * * *` будет запускать проверки автоматически. GitHub Actions может запускать задачи с небольшой задержкой относительно точной пятиминутной отметки.
+5. После этого расписание `*/15 * * * *` будет запускать проверки автоматически. GitHub Actions может запускать задачи с небольшой задержкой относительно точной пятнадцатиминутной отметки.
 
 Обычный плановый запуск не отправляет синтетические сообщения и не содержит команд ручного deployment.
 
