@@ -2,16 +2,16 @@ name: Check KuCoin activities
 
 on:
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: '20 */2 * * *'
   workflow_dispatch:
     inputs:
       send_test_messages:
-        description: 'Отправить 10 разных сообщений с пометкой [ТЕСТ]'
+        description: 'Отправить 10 тестовых сообщений в основной чат'
         required: true
         default: false
         type: boolean
       send_events_hub_test_message:
-        description: 'Отправить одно тестовое сообщение Events Hub'
+        description: 'Отправить тестовое сообщение Events Hub'
         required: true
         default: false
         type: boolean
@@ -42,12 +42,7 @@ jobs:
         run: |
           test -n "$CHECK_URL"
           test -n "$CHECK_SECRET"
-          curl --fail-with-body --silent --show-error --max-time 70 \
-            -X POST \
-            -H "Authorization: Bearer $CHECK_SECRET" \
-            -H "Content-Type: application/json" \
-            --data-binary @/tmp/events.json \
-            "$CHECK_URL"
+          curl --fail-with-body --silent --show-error --max-time 70             -X POST             -H "Authorization: Bearer $CHECK_SECRET"             -H "Content-Type: application/json"             --data-binary @/tmp/events.json             "$CHECK_URL"
       - name: Send 10 explicitly requested test messages
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.send_test_messages }}
         env:
@@ -58,19 +53,9 @@ jobs:
           test -n "$CHECK_URL"
           test -n "$CHECK_SECRET"
           node scripts/manual-test-payload.js baseline > /tmp/test-baseline.json
-          curl --fail-with-body --silent --show-error --max-time 70 \
-            -X POST \
-            -H "Authorization: Bearer $CHECK_SECRET" \
-            -H "Content-Type: application/json" \
-            --data-binary @/tmp/test-baseline.json \
-            "$CHECK_URL"
+          curl --fail-with-body --silent --show-error --max-time 70             -X POST             -H "Authorization: Bearer $CHECK_SECRET"             -H "Content-Type: application/json"             --data-binary @/tmp/test-baseline.json             "$CHECK_URL"
           node scripts/manual-test-payload.js messages > /tmp/test-messages.json
-          curl --fail-with-body --silent --show-error --max-time 70 \
-            -X POST \
-            -H "Authorization: Bearer $CHECK_SECRET" \
-            -H "Content-Type: application/json" \
-            --data-binary @/tmp/test-messages.json \
-            "$CHECK_URL"
+          curl --fail-with-body --silent --show-error --max-time 70             -X POST             -H "Authorization: Bearer $CHECK_SECRET"             -H "Content-Type: application/json"             --data-binary @/tmp/test-messages.json             "$CHECK_URL"
       - name: Send one explicitly requested Events Hub test message
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.send_events_hub_test_message }}
         env:
@@ -81,16 +66,6 @@ jobs:
           test -n "$CHECK_URL"
           test -n "$CHECK_SECRET"
           node scripts/manual-test-payload.js events-hub-baseline > /tmp/events-hub-test-baseline.json
-          curl --fail-with-body --silent --show-error --max-time 70 \
-            -X POST \
-            -H "Authorization: Bearer $CHECK_SECRET" \
-            -H "Content-Type: application/json" \
-            --data-binary @/tmp/events-hub-test-baseline.json \
-            "$CHECK_URL"
+          curl --fail-with-body --silent --show-error --max-time 70             -X POST             -H "Authorization: Bearer $CHECK_SECRET"             -H "Content-Type: application/json"             --data-binary @/tmp/events-hub-test-baseline.json             "$CHECK_URL"
           node scripts/manual-test-payload.js events-hub-message > /tmp/events-hub-test-message.json
-          curl --fail-with-body --silent --show-error --max-time 70 \
-            -X POST \
-            -H "Authorization: Bearer $CHECK_SECRET" \
-            -H "Content-Type: application/json" \
-            --data-binary @/tmp/events-hub-test-message.json \
-            "$CHECK_URL"
+          curl --fail-with-body --silent --show-error --max-time 70             -X POST             -H "Authorization: Bearer $CHECK_SECRET"             -H "Content-Type: application/json"             --data-binary @/tmp/events-hub-test-message.json             "$CHECK_URL"
